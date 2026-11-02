@@ -1,0 +1,18 @@
+[tools]
+go = "1.26"
+
+[tasks.test]
+description = "Tests unitaires (go test)"
+run = "go test ./..."
+
+[tasks.build]
+description = "Construit le binaire ./preview"
+run = "go build -o preview ."
+
+[tasks.install]
+description = "Installe la commande preview dans $GOBIN"
+run = "go install ."
+
+[tasks.example]
+description = "Deck d'exemple dans le terminal"
+run = "go run . deck examples/demo.md"

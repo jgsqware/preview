@@ -1,0 +1,130 @@
+{
+ "title": "Preview",
+ "main": 6,
+ "slides": [
+  {
+   "label": "1",
+   "title": "Preview",
+   "cover": true,
+   "appendix": false,
+   "notes": true,
+   "blocks": [
+    "p",
+    "list"
+   ],
+   "steps": [
+    {}
+   ]
+  },
+  {
+   "label": "2",
+   "title": "Le problème",
+   "cover": false,
+   "appendix": false,
+   "notes": false,
+   "blocks": [
+    "p",
+    "h2",
+    "list",
+    "h2",
+    "list"
+   ],
+   "steps": [
+    {}
+   ]
+  },
+  {
+   "label": "3",
+   "title": "Comment ça marche",
+   "cover": false,
+   "appendix": false,
+   "notes": false,
+   "blocks": [
+    "text",
+    "table",
+    "callout"
+   ],
+   "steps": [
+    {}
+   ]
+  },
+  {
+   "label": "4",
+   "title": "Un deck, deux cibles",
+   "cover": false,
+   "appendix": false,
+   "notes": false,
+   "blocks": [
+    "tabs",
+    "quote"
+   ],
+   "steps": [
+    {
+     "s3w0": 1
+    },
+    {
+     "s3w0": 2
+    },
+    {
+     "s3w0": 0
+    }
+   ]
+  },
+  {
+   "label": "5",
+   "title": "Un run, de l'intérieur",
+   "cover": false,
+   "appendix": false,
+   "notes": true,
+   "blocks": [
+    "pipeline",
+    "callout"
+   ],
+   "steps": [
+    {
+     "s4w0": 1
+    },
+    {
+     "s4w0": 2
+    },
+    {
+     "s4w0": 3
+    },
+    {
+     "s4w0": 4
+    },
+    {
+     "s4w0": 5
+    }
+   ]
+  },
+  {
+   "label": "6",
+   "title": "Démo",
+   "cover": false,
+   "appendix": false,
+   "notes": false,
+   "blocks": [
+    "term",
+    "live"
+   ],
+   "steps": [
+    {}
+   ]
+  },
+  {
+   "label": "A",
+   "title": "Configuration minimale",
+   "cover": false,
+   "appendix": true,
+   "notes": true,
+   "blocks": [
+    "code",
+    "callout"
+   ],
+   "steps": [
+    {}
+   ]
+  }
+ ]
+}
