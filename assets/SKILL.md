@@ -21,7 +21,11 @@ La spécification complète est dans `SPEC.md` du dépôt preview ; l'essentiel 
    result_ok, result_fail, command) ; la sortie `ansible-playbook` est reconnue d'office.
 4. **Sondes** : commencer par les intégrées (`preview builtin docker|system|http`), puis écrire des sondes
    propres au projet (voir ci-dessous).
-5. Vérifier : `preview check`, `preview probe`, `preview deck --all`, `preview rehearse`, `preview html`.
+5. Vérifier : `preview check`, `preview probe`, `preview deck --all`, `preview rehearse`, `preview html --all`.
+
+Plusieurs publics (version courte / longue) : une liste `[[deck]] name, source, html` à la place de
+`[deck]` ; `preview deck` sans argument ouvre alors un sélecteur, `preview check` et `preview html --all`
+couvrent tous les decks.
 
 ## Écrire une sonde
 
@@ -45,6 +49,7 @@ le système observé est absent (le dire dans `status` / `note`). Code ≠ 0 = b
 
 Statuts : `ok | warn | fail | unknown`. L'historique des `series` (sparklines) est tenu par preview.
 Déclarer dans `preview.toml` : `[[probe]] name, run, interval, timeout, place = "side"|"bottom"`.
+Pour n'afficher que les panneaux utiles à un scénario : `probes = ["relay", "tunnels"]` dans son `[[scenario]]`.
 Environnement reçu : `PREVIEW_PROJECT_DIR`, `PREVIEW_STATE_DIR` (pour garder un échantillon précédent).
 
 ## Syntaxe du deck (`demo.md`)

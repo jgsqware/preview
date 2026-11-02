@@ -32,7 +32,7 @@ import (
 )
 
 // Version : remplacée au build (-ldflags "-X …cli.Version=x").
-var Version = "0.2.0"
+var Version = "0.3.0"
 
 var B, D, R, G, Y, RED string
 
@@ -92,10 +92,10 @@ var commands []*command
 
 func init() {
 	commands = []*command{
-		{name: "deck", help: "deck dans le terminal", usage: "[demo.md] [--all] [--slide N]",
+		{name: "deck", help: "deck dans le terminal (sélecteur s'il y en a plusieurs)", usage: "[deck|demo.md] [--all] [--slide N]",
 			bools: []string{"all"}, values: []string{"slide"}, maxPos: 1, fn: cmdDeck},
-		{name: "html", help: "export HTML autonome", usage: "[demo.md] [-o fichier.html]",
-			values: []string{"output"}, short: map[string]string{"-o": "output"}, maxPos: 1, fn: cmdHTML},
+		{name: "html", help: "export HTML autonome", usage: "[deck|demo.md] [-o fichier.html] [--all]",
+			bools: []string{"all"}, values: []string{"output"}, short: map[string]string{"-o": "output"}, maxPos: 1, fn: cmdHTML},
 		{name: "live", help: "lance un scénario en direct (TUI), enregistré", usage: "[scénario] [--fallback] [--force] [--speed X]",
 			bools: []string{"fallback", "force"}, values: []string{"speed"}, maxPos: 1, fn: cmdLive},
 		{name: "watch", help: "tableau de bord seul (sondes + journal suivi)", usage: "[--once]",
@@ -634,16 +634,18 @@ func reportSteps(app *live.App, shown map[int]string) {
 	}
 }
 
-// deckScenarios : scénarios cités par les blocs ```live du deck.
+// deckScenarios : scénarios cités par les blocs ```live de tous les decks.
 func deckScenarios(cfg *config.Config) []string {
-	d, err := deck.Parse(cfg.DeckSource)
-	if err != nil {
-		return nil
-	}
 	var out []string
-	for _, s := range deck.LiveScenarios(d) {
-		if _, ok := cfg.Scenarios[s]; ok {
-			out = append(out, s)
+	for _, dk := range cfg.Decks {
+		d, err := deck.Parse(dk.Source)
+		if err != nil {
+			continue
+		}
+		for _, s := range deck.LiveScenarios(d) {
+			if _, ok := cfg.Scenarios[s]; ok && !contains(out, s) {
+				out = append(out, s)
+			}
 		}
 	}
 	return out
@@ -675,14 +677,51 @@ func withArg(cmd, arg string) []string {
 	return []string{cmd, arg}
 }
 
-func deckPath(cfg *config.Config, arg string) string {
-	if arg != "" {
-		return arg
+// deckOf : arg = nom d'un deck de preview.toml, ou fichier ; vide = premier deck. nil si arg est un fichier hors config.
+func deckOf(cfg *config.Config, arg string) *config.Deck {
+	if cfg != nil {
+		if arg == "" {
+			return cfg.Decks[0]
+		}
+		if d := cfg.Deck(arg); d != nil && !isFile(arg) {
+			return d
+		}
+		abs, _ := filepath.Abs(arg)
+		for _, d := range cfg.Decks {
+			if d.Source == abs {
+				return d
+			}
+		}
 	}
-	if cfg == nil {
+	if arg == "" {
 		die("pas de preview.toml : donne le fichier du deck", 2)
 	}
-	return cfg.DeckSource
+	return nil
+}
+
+func deckPath(cfg *config.Config, arg string) string {
+	if d := deckOf(cfg, arg); d != nil {
+		return d.Source
+	}
+	return arg
+}
+
+func deckChoices(cfg *config.Config) []deck.Choice {
+	out := make([]deck.Choice, len(cfg.Decks))
+	for i, dk := range cfg.Decks {
+		r, _ := filepath.Rel(cfg.Root, dk.Source)
+		detail := r
+		if d, err := deck.Parse(dk.Source); err != nil {
+			detail += " · introuvable ou illisible"
+		} else {
+			if t := deck.Plain(d.Title); t != "" {
+				detail = t + " · " + detail
+			}
+			detail += fmt.Sprintf(" · %d diapositive(s)", d.Main())
+		}
+		out[i] = deck.Choice{Name: dk.Name, Detail: detail}
+	}
+	return out
 }
 
 func tryCfg(a *args) *config.Config {
@@ -703,7 +742,22 @@ func isFile(p string) bool {
 
 func cmdDeck(a *args) int {
 	cfg := tryCfg(a)
-	path := deckPath(cfg, a.arg(0))
+	if cfg != nil && a.arg(0) == "" && len(cfg.Decks) > 1 && !a.has("all") &&
+		term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+		// plusieurs decks : sélecteur, on y revient en quittant un deck
+		items, cur := deckChoices(cfg), 0
+		for {
+			cur = deck.Choose(cfg.Name+" · decks", items, cur)
+			if cur < 0 {
+				return 0
+			}
+			showDeck(a, cfg, cfg.Decks[cur].Source)
+		}
+	}
+	return showDeck(a, cfg, deckPath(cfg, a.arg(0)))
+}
+
+func showDeck(a *args, cfg *config.Config, path string) int {
 	if !isFile(path) {
 		die(path+" introuvable", 2)
 	}
@@ -729,17 +783,42 @@ func cmdDeck(a *args) int {
 
 func cmdHTML(a *args) int {
 	cfg := tryCfg(a)
-	path := deckPath(cfg, a.arg(0))
+	if a.has("all") {
+		if cfg == nil {
+			die("html --all : pas de preview.toml", 2)
+		}
+		if a.arg(0) != "" || a.has("output") {
+			die("html --all : ni deck ni -o (chaque deck va dans son html)", 2)
+		}
+		rc := 0
+		for _, dk := range cfg.Decks {
+			if !isFile(dk.Source) {
+				fmt.Fprintf(os.Stderr, "%s✘%s %s : %s introuvable\n", RED, R, dk.Name, rel(dk.Source))
+				rc = 2
+				continue
+			}
+			exportHTML(cfg, dk.Source, dk.HTML)
+		}
+		return rc
+	}
+	dk := deckOf(cfg, a.arg(0))
+	path := a.arg(0)
+	if dk != nil {
+		path = dk.Source
+	}
 	if !isFile(path) {
 		die(path+" introuvable", 2)
 	}
 	out := a.get("output")
 	if out == "" {
-		if cfg != nil && a.arg(0) == "" {
-			out = cfg.DeckHTML
+		if dk != nil {
+			out = dk.HTML
 		} else {
 			out = strings.TrimSuffix(path, filepath.Ext(path)) + ".html"
 		}
+	}
+	if cfg != nil && a.arg(0) == "" && len(cfg.Decks) > 1 {
+		fmt.Fprintf(os.Stderr, "%s%d autre(s) deck(s) : preview html --all%s\n", D, len(cfg.Decks)-1, R)
 	}
 	if cfg == nil {
 		dir, _ := filepath.Abs(filepath.Dir(path))
@@ -747,6 +826,11 @@ func cmdHTML(a *args) int {
 		cfg.StateDir = filepath.Join(filepath.Dir(path), ".preview")
 		cfg.DeckSource, cfg.DeckHTML = path, out
 	}
+	exportHTML(cfg, path, out)
+	return 0
+}
+
+func exportHTML(cfg *config.Config, path, out string) {
 	res, err := html.Export(cfg, path, out, func(m string) { fmt.Fprintf(os.Stderr, "⚠ %s\n", m) })
 	if err != nil {
 		die(err.Error(), 2)
@@ -756,7 +840,6 @@ func cmdHTML(a *args) int {
 		size = st.Size()
 	}
 	fmt.Printf("✔ %s (%d Ko)\n", rel(res), size/1024)
-	return 0
 }
 
 // -- probe / check -----------------------------------------------------------------------------
@@ -825,7 +908,7 @@ func cmdCheck(a *args) int {
 		}
 		fmt.Printf("%s%s %s\n", mark, R, text)
 	}
-	line(true, fmt.Sprintf("preview.toml : %s · %d scénario(s) · %d sonde(s)", cfg.Name, len(cfg.Scenarios), len(cfg.Probes)))
+	line(true, fmt.Sprintf("preview.toml : %s · %d deck(s) · %d scénario(s) · %d sonde(s)", cfg.Name, len(cfg.Decks), len(cfg.Scenarios), len(cfg.Probes)))
 	for _, k := range []string{"step", "ok", "fail", "result_ok", "result_fail", "ignore_step", "command", "plan"} {
 		if v := cfg.Rules[k]; v != "" {
 			if _, err := rx.Compile(v); err != nil {
@@ -841,12 +924,19 @@ func cmdCheck(a *args) int {
 		if !good {
 			extra = " · plan introuvable " + sc.Plan
 		}
+		if len(sc.Probes) > 0 {
+			extra += " · sondes : " + strings.Join(sc.Probes, ", ")
+		}
 		line(good, fmt.Sprintf("scénario %s : %d étape(s) prévue(s)%s", sc.Name, len(plan), extra))
 	}
-	if isFile(cfg.DeckSource) {
-		d, err := deck.Parse(cfg.DeckSource)
+	for _, dk := range cfg.Decks {
+		if !isFile(dk.Source) {
+			line(false, fmt.Sprintf("deck %s introuvable : %s", dk.Name, dk.Source))
+			continue
+		}
+		d, err := deck.Parse(dk.Source)
 		if err != nil {
-			line(false, "deck : "+err.Error())
+			line(false, "deck "+dk.Name+" : "+err.Error())
 		} else {
 			var unknown []string
 			for _, s := range deck.LiveScenarios(d) {
@@ -854,15 +944,14 @@ func cmdCheck(a *args) int {
 					unknown = append(unknown, s)
 				}
 			}
-			r, _ := filepath.Rel(cfg.Root, cfg.DeckSource)
+			r, _ := filepath.Rel(cfg.Root, dk.Source)
+			o, _ := filepath.Rel(cfg.Root, dk.HTML)
 			extra := ""
 			if len(unknown) > 0 {
 				extra = " · scénarios inconnus : " + strings.Join(unknown, ", ")
 			}
-			line(len(unknown) == 0, fmt.Sprintf("deck %s : %d diapositive(s)%s", r, len(d.Slides), extra))
+			line(len(unknown) == 0, fmt.Sprintf("deck %s (%s → %s) : %d diapositive(s)%s", dk.Name, r, o, len(d.Slides), extra))
 		}
-	} else {
-		line(false, "deck introuvable : "+cfg.DeckSource)
 	}
 	for _, p := range cfg.Probes {
 		r := probes.RunOnce(p, cfg)

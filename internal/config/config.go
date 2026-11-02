@@ -52,6 +52,14 @@ type Scenario struct {
 	Preflight string
 	Timeout   float64 // 0 = aucun
 	Env       map[string]string
+	Probes    []string // sondes affichées pendant ce scénario ; vide = toutes
+}
+
+// Deck : un deck du projet ([[deck]] ou [deck]).
+type Deck struct {
+	Name   string
+	Source string // chemin absolu
+	HTML   string // chemin absolu
 }
 
 type Probe struct {
@@ -67,8 +75,9 @@ type Config struct {
 	Name       string
 	Subtitle   string
 	StateDir   string
-	DeckSource string
+	DeckSource string // premier deck
 	DeckHTML   string
+	Decks      []*Deck
 	Default    string
 	Interval   float64
 	Redact     []string
@@ -89,6 +98,42 @@ func New(root, name string) *Config {
 }
 
 func (c *Config) Recordings() string { return filepath.Join(c.StateDir, "recordings") }
+
+// Deck : par nom ; nil si inconnu.
+func (c *Config) Deck(name string) *Deck {
+	for _, d := range c.Decks {
+		if d.Name == name {
+			return d
+		}
+	}
+	return nil
+}
+
+// DeckNames : noms des decks, dans l'ordre de preview.toml.
+func (c *Config) DeckNames() []string {
+	out := make([]string, len(c.Decks))
+	for i, d := range c.Decks {
+		out[i] = d.Name
+	}
+	return out
+}
+
+// ProbesFor : sondes à afficher pour un scénario (toutes si sc est nil ou sans liste).
+func (c *Config) ProbesFor(sc *Scenario) []*Probe {
+	if sc == nil || len(sc.Probes) == 0 {
+		return c.Probes
+	}
+	var out []*Probe
+	for _, p := range c.Probes {
+		for _, n := range sc.Probes {
+			if p.Name == n {
+				out = append(out, p)
+				break
+			}
+		}
+	}
+	return out
+}
 
 // Scenario : par nom, ou le défaut, ou le premier.
 func (c *Config) Scenario(name string) (*Scenario, error) {
@@ -148,6 +193,13 @@ type rawScenario struct {
 	Timeout   float64        `toml:"timeout"`
 	Env       map[string]any `toml:"env"`
 	Glob      string         `toml:"glob"`
+	Probes    []string       `toml:"probes"`
+}
+
+type rawDeck struct {
+	Name   string `toml:"name"`
+	Source string `toml:"source"`
+	HTML   string `toml:"html"`
 }
 
 type rawProbe struct {
@@ -164,10 +216,7 @@ type raw struct {
 		Subtitle string `toml:"subtitle"`
 		StateDir string `toml:"state_dir"`
 	} `toml:"project"`
-	Deck struct {
-		Source string `toml:"source"`
-		HTML   string `toml:"html"`
-	} `toml:"deck"`
+	Deck any `toml:"deck"` // [deck] (un seul) ou [[deck]] (liste)
 	Live struct {
 		Default  string            `toml:"default"`
 		Interval *float64          `toml:"interval"`
@@ -223,12 +272,37 @@ func Load(root string) (*Config, error) {
 	cfg := New(root, r.Project.Name)
 	cfg.Subtitle = r.Project.Subtitle
 	cfg.StateDir = rel(or(r.Project.StateDir, ".preview"))
-	cfg.DeckSource = rel(or(r.Deck.Source, "demo.md"))
-	if r.Deck.HTML != "" {
-		cfg.DeckHTML = rel(r.Deck.HTML)
-	} else {
-		cfg.DeckHTML = strings.TrimSuffix(cfg.DeckSource, filepath.Ext(cfg.DeckSource)) + ".html"
+	decks, err := rawDecks(r.Deck)
+	if err != nil {
+		return nil, errf("%s : %v", path, err)
 	}
+	if len(decks) == 0 {
+		decks = []rawDeck{{}}
+	}
+	for _, d := range decks {
+		src := rel(or(d.Source, "demo.md"))
+		name := d.Name
+		if name == "" {
+			if len(decks) > 1 {
+				return nil, errf("%s : chaque [[deck]] demande name", path)
+			}
+			name = strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
+		}
+		if cfg.Deck(name) != nil {
+			return nil, errf("%s : deck en double : %s", path, name)
+		}
+		out := strings.TrimSuffix(src, filepath.Ext(src)) + ".html"
+		if d.HTML != "" {
+			out = rel(d.HTML)
+		}
+		for _, o := range cfg.Decks {
+			if o.HTML == out {
+				return nil, errf("%s : decks %s et %s : même fichier HTML %s", path, o.Name, name, out)
+			}
+		}
+		cfg.Decks = append(cfg.Decks, &Deck{Name: name, Source: src, HTML: out})
+	}
+	cfg.DeckSource, cfg.DeckHTML = cfg.Decks[0].Source, cfg.Decks[0].HTML
 	cfg.Default = r.Live.Default
 	if r.Live.Interval != nil {
 		cfg.Interval = *r.Live.Interval
@@ -267,7 +341,7 @@ func Load(root string) (*Config, error) {
 				plan = *d.Plan
 			}
 			cfg.addScenario(&Scenario{Name: name, Run: fmtS(d.Run), Title: fmtS(d.Title), Plan: rel(fmtS(plan)),
-				Preflight: d.Preflight, Timeout: d.Timeout, Env: env(d.Env)})
+				Preflight: d.Preflight, Timeout: d.Timeout, Env: env(d.Env), Probes: d.Probes})
 		}
 	}
 	for _, s := range r.Scenario {
@@ -279,7 +353,7 @@ func Load(root string) (*Config, error) {
 			plan = rel(*s.Plan)
 		}
 		cfg.addScenario(&Scenario{Name: s.Name, Run: s.Run, Title: s.Title, Plan: plan, Preflight: s.Preflight,
-			Timeout: s.Timeout, Env: env(s.Env)})
+			Timeout: s.Timeout, Env: env(s.Env), Probes: s.Probes})
 	}
 	seen := map[string]bool{}
 	for _, p := range r.Probe {
@@ -303,5 +377,62 @@ func Load(root string) (*Config, error) {
 		}
 		cfg.Probes = append(cfg.Probes, pr)
 	}
+	for _, n := range cfg.Order {
+		for _, pn := range cfg.Scenarios[n].Probes {
+			if !seen[pn] {
+				return nil, errf("%s : scénario %s : sonde inconnue dans probes : %s", path, n, pn)
+			}
+		}
+	}
 	return cfg, nil
+}
+
+// rawDecks : [deck] (table) ou [[deck]] (liste de tables).
+func rawDecks(v any) ([]rawDeck, error) {
+	str := func(m map[string]any, k string) (string, error) {
+		x, ok := m[k]
+		if !ok {
+			return "", nil
+		}
+		s, ok := x.(string)
+		if !ok {
+			return "", fmt.Errorf("deck : %s doit être une chaîne", k)
+		}
+		return s, nil
+	}
+	one := func(m map[string]any) (rawDeck, error) {
+		var d rawDeck
+		var err error
+		for k := range m {
+			if k != "name" && k != "source" && k != "html" {
+				return d, fmt.Errorf("deck : clé inconnue %s (name, source, html)", k)
+			}
+		}
+		if d.Name, err = str(m, "name"); err != nil {
+			return d, err
+		}
+		if d.Source, err = str(m, "source"); err != nil {
+			return d, err
+		}
+		d.HTML, err = str(m, "html")
+		return d, err
+	}
+	switch t := v.(type) {
+	case nil:
+		return nil, nil
+	case map[string]any:
+		d, err := one(t)
+		return []rawDeck{d}, err
+	case []map[string]any:
+		var out []rawDeck
+		for _, m := range t {
+			d, err := one(m)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, d)
+		}
+		return out, nil
+	}
+	return nil, fmt.Errorf("deck : [deck] ou [[deck]] attendu")
 }

@@ -23,3 +23,20 @@ func RunTerminal(d *Deck, start int, printAll bool, live LiveHooks) int {
 	os.Stdout.WriteString(RenderAll(d, false, WIDTH))
 	return 0
 }
+
+// Choice : une entrée du sélecteur.
+type Choice struct{ Name, Detail string }
+
+// Choose : liste numérotée, lecture d'un numéro sur l'entrée standard ; -1 si rien de valide.
+func Choose(title string, items []Choice, cur int) int {
+	fmt.Println(title)
+	for i, it := range items {
+		fmt.Printf("  %d. %s  %s\n", i+1, it.Name, it.Detail)
+	}
+	fmt.Print("numéro (vide = quitter) : ")
+	var n int
+	if _, err := fmt.Scanln(&n); err != nil || n < 1 || n > len(items) {
+		return -1
+	}
+	return n - 1
+}

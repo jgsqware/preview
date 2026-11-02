@@ -41,6 +41,8 @@ type App struct {
 	Probes *probes.State
 	place  map[string]string
 
+	probeList []*config.Probe // sondes de ce scénario (toutes hors scénario)
+
 	t0       time.Time
 	clock    float64
 	Finished bool
@@ -65,8 +67,9 @@ func New(cfg *config.Config, mode string, sc *config.Scenario, replay string, sp
 		a.plan = events.PlannedSteps(sc.Plan, cfg.Rules["plan"])
 	}
 	a.Run = events.NewRun(a.parser, a.plan)
-	names := make([]string, len(cfg.Probes))
-	for i, p := range cfg.Probes {
+	a.probeList = cfg.ProbesFor(sc)
+	names := make([]string, len(a.probeList))
+	for i, p := range a.probeList {
 		names[i] = p.Name
 		a.place[p.Name] = p.Place
 	}
@@ -345,8 +348,8 @@ func (a *App) ReplayLoop() {
 
 // Start : lance les goroutines du mode.
 func (a *App) Start() error {
-	if (a.Mode == "run" || a.Mode == "watch") && len(a.Cfg.Probes) > 0 {
-		probes.StartPoller(a.Cfg, a.Probes, a.stop)
+	if (a.Mode == "run" || a.Mode == "watch") && len(a.probeList) > 0 {
+		probes.StartPoller(a.Cfg, a.probeList, a.Probes, a.stop)
 	}
 	switch a.Mode {
 	case "run":

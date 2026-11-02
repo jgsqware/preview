@@ -340,9 +340,9 @@ func (s *State) Worst() string {
 	return worst
 }
 
-// StartPoller : une goroutine par sonde, chacune à son intervalle, jusqu'à la fermeture de stop.
-func StartPoller(cfg *config.Config, st *State, stop <-chan struct{}) {
-	for _, p := range cfg.Probes {
+// StartPoller : une goroutine par sonde de list, chacune à son intervalle, jusqu'à la fermeture de stop.
+func StartPoller(cfg *config.Config, list []*config.Probe, st *State, stop <-chan struct{}) {
+	for _, p := range list {
 		go func(p *config.Probe) {
 			for {
 				t := time.Now()

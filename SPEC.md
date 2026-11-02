@@ -8,14 +8,16 @@ Un **binaire Go unique** (Go ≥ 1.26 pour le construire), sans dépendance à l
 Les regex de `preview.toml` (`live.rules`, `live.redact`) suivent la syntaxe de Python `re` (lookbehind compris).
 
 ```
-preview deck [demo.md] [--all] [--slide N]      deck dans le terminal
-preview html [demo.md] [-o fichier.html]        export HTML autonome (enregistrements inclus)
+preview deck [deck|demo.md] [--all] [--slide N]  deck dans le terminal ; sans argument et avec
+                                                 plusieurs [[deck]] : sélecteur (on y revient en quittant)
+preview html [deck|demo.md] [-o f.html] [--all] export HTML autonome (enregistrements inclus) ;
+                                                 --all : chaque [[deck]] vers son html
 preview live [scénario]                         lance le scénario + TUI, enregistre le run
 preview watch                                   tableau de bord seul (sondes + journal suivi), lecture seule
 preview replay [fichier|scénario] [--speed X] [--once]
 preview rehearse [scénario…]                    joue sans TUI, enregistre, rapport OK / ROUGE / PÉRIMÉ
 preview probe [nom] [--json]                    exécute les sondes une fois (mise au point)
-preview check                                   valide preview.toml, le deck et les sondes
+preview check                                   valide preview.toml, tous les decks et les sondes
 preview init                                    crée preview.toml + demo.md à partir du dépôt
 preview skill install                           installe le skill Claude Code dans ~/.claude/skills/
 ```
@@ -38,6 +40,12 @@ state_dir = ".preview"          # enregistrements ; défaut ".preview"
 [deck]
 source = "demo.md"               # défaut "demo.md"
 html = "demo/index.html"         # défaut "<source sans .md>.html"
+
+# … ou plusieurs decks (à la place de [deck]) ; le premier est le défaut
+[[deck]]
+name = "court"                   # requis avec plusieurs decks, unique ; `preview deck court`
+source = "decks/court.md"
+html = "site/court.html"         # défaut "<source sans .md>.html" ; deux decks ne partagent pas un html
 
 [live]
 default = "platform"             # scénario par défaut de `preview live`
@@ -66,6 +74,7 @@ plan = "tests/platform.sh"       # fichier scanné pour les étapes prévues (op
 preflight = "incus info >/dev/null"  # si échec : `preview live` propose le dernier enregistrement VERT
 timeout = 1800                   # secondes ; défaut aucun
 env = { KEEP_ENV = "1" }
+probes = ["relay", "tunnels"]    # sondes affichées (et enregistrées) pendant ce scénario ; défaut : toutes
 
 # … ou découverts : un scénario par fichier
 [scenarios]
@@ -83,6 +92,9 @@ place = "side"                   # "side" (à droite des étapes) | "bottom" (so
 ```
 
 Les `[[scenario]]` explicites passent avant ceux de `[scenarios]` en cas de nom identique.
+`probes` (aussi accepté dans `[scenarios]`) ne cite que des `[[probe]]` déclarées ; `preview watch`,
+hors scénario, affiche toujours toutes les sondes. `preview rehearse` sans argument joue les scénarios
+cités par les blocs ```live de tous les decks.
 
 ---
 

@@ -17,8 +17,8 @@ preview html              # deck HTML autonome, avec le dernier run VERT embarqu
 
 | Commande | Rôle |
 |---|---|
-| `preview deck [demo.md] [--all]` | deck terminal ; `d` / `w` / `r` sur une diapositive live |
-| `preview html [demo.md] [-o f.html]` | un seul fichier HTML, hors ligne, clair / sombre |
+| `preview deck [deck\|demo.md] [--all]` | deck terminal ; sélecteur s'il y a plusieurs `[[deck]]` ; `d` / `w` / `r` sur une diapositive live |
+| `preview html [deck\|demo.md] [-o f.html] [--all]` | un seul fichier HTML, hors ligne, clair / sombre ; `--all` : tous les decks |
 | `preview live [scénario] [--fallback]` | TUI : étapes, journal, compteurs Ansible, sondes ; enregistre |
 | `preview watch [--once]` | sondes + journal suivi, lecture seule |
 | `preview replay [scénario\|fichier] [--speed X] [--once]` | rejoue un enregistrement |
@@ -29,7 +29,9 @@ preview html              # deck HTML autonome, avec le dernier run VERT embarqu
 
 ## Comment ça tient
 
-- **Un projet = `preview.toml` + `demo.md`.** Les scénarios sont des commandes ; les sondes sont des
+- **Un projet = `preview.toml` + un ou plusieurs decks** (`[[deck]]`, chacun avec son HTML).
+  Un scénario peut limiter ses panneaux : `probes = ["relay", "tunnels"]`.
+- **Sondes et scénarios.** Les scénarios sont des commandes ; les sondes sont des
   exécutables qui impriment un JSON typé (lignes, barres, ratios, badges, séries) : preview ne connaît
   ni Docker, ni Incus, ni Prometheus.
 - **Lecture de la sortie** (regex à la syntaxe Python, lookbehind compris) : protocole `::step` / `::ok` / `::fail` / `::metric` / `::result`, sortie
